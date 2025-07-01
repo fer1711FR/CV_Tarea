@@ -1,3 +1,6 @@
 dotenv
 matplotlib
 pillow
+googletrans 
+streamlit
+googletrans 

@@ -1,103 +1,74 @@
+import streamlit as st
 from dotenv import load_dotenv
 import os
 from PIL import Image, ImageDraw
-import sys
 from matplotlib import pyplot as plt
-from azure.core.exceptions import HttpResponseError
-import requests
-
-# import namespaces
-
-
-def main():
-
-    # Clear the console
-    os.system('cls' if os.name=='nt' else 'clear')
-
-    try:
-        # Get Configuration Settings
-        load_dotenv()
-        ai_endpoint = os.getenv('AI_SERVICE_ENDPOINT')
-        ai_key = os.getenv('AI_SERVICE_KEY')
-
-        # Get image
-        image_file = 'images/street.jpg'
-        if len(sys.argv) > 1:
-            image_file = sys.argv[1]
-        
-
-        # Authenticate Azure AI Vision client
+from azure.cognitiveservices.vision.computervision import ComputerVisionClient
+from azure.cognitiveservices.vision.computervision.models import VisualFeatureTypes
+from msrest.authentication import CognitiveServicesCredentials
+import io
 
 
-        # Analyze image
 
+# Cargar configuración
+load_dotenv()
+AI_ENDPOINT = os.getenv("AI_SERVICE_ENDPOINT")
+AI_KEY = os.getenv("AI_SERVICE_KEY")
 
-        # Get image captions
-        
+# Crear cliente
+credentials = CognitiveServicesCredentials(AI_KEY)
+cv_client = ComputerVisionClient(AI_ENDPOINT, credentials)
 
-        # Get image tags
+st.set_page_config(page_title="Análisis de Imágenes con Azure", layout="wide")
+st.title("🧠 Azure Computer Vision - Análisis de Imágenes")
 
+uploaded_file = st.file_uploader("Sube una imagen", type=["jpg", "jpeg", "png"])
 
-        # Get objects in the image
+if uploaded_file:
 
+    # 1) Leer todos los bytes de la imagen
+    image_bytes = uploaded_file.read()
 
-        # Get people in the image
-  
-            
-        
-    except Exception as ex:
-        print(ex)
+    # 2) Crear la imagen de PIL *desde* esos bytes
+    image = Image.open(io.BytesIO(image_bytes))
+    st.image(image, caption="Imagen subida", use_container_width=True)
 
+    with st.spinner("Analizando imagen..."):
+        # 3) Volver a empaquetar los mismos bytes en un BytesIO para Azure
+        analysis = cv_client.analyze_image_in_stream(
+            image=io.BytesIO(image_bytes),
+            visual_features=[
+                VisualFeatureTypes.description,
+                VisualFeatureTypes.tags,
+                VisualFeatureTypes.objects
+            ]
+        )
 
-def show_objects(image_filename, detected_objects):
-    print ("\nAnnotating objects...")
+    # Descripción
+    if analysis.description and analysis.description.captions:
+        st.subheader("📝 Descripción")
+        for caption in analysis.description.captions:
+            st.write(f"> {caption.text} ({caption.confidence * 100:.1f}%)")
 
-    # Prepare image for drawing
-    image = Image.open(image_filename)
-    fig = plt.figure(figsize=(image.width/100, image.height/100))
-    plt.axis('off')
-    draw = ImageDraw.Draw(image)
-    color = 'cyan'
+    # Etiquetas
+    if analysis.tags:
+        st.subheader("🏷️ Etiquetas")
+        tags = [f"{tag.name} ({tag.confidence * 100:.1f}%)" for tag in analysis.tags]
+        st.markdown(", ".join(tags))
 
-    for detected_object in detected_objects:
-        # Draw object bounding box
-        r = detected_object.bounding_box
-        bounding_box = ((r.x, r.y), (r.x + r.width, r.y + r.height)) 
-        draw.rectangle(bounding_box, outline=color, width=3)
-        plt.annotate(detected_object.tags[0].name,(r.x, r.y), backgroundcolor=color)
+    # Objetos
+    if analysis.objects:
+        st.subheader("📦 Objetos detectados")
 
-    # Save annotated image
-    plt.imshow(image)
-    plt.tight_layout(pad=0)
-    objectfile = 'objects.jpg'
-    fig.savefig(objectfile)
-    print('  Results saved in', objectfile)
+        draw = ImageDraw.Draw(image)
+        for obj in analysis.objects:
+            r = obj.rectangle
+            box = [(r.x, r.y), (r.x + r.w, r.y + r.h)]
+            draw.rectangle(box, outline="cyan", width=3)
+            draw.text((r.x, r.y), obj.object_property, fill="cyan")
 
+            st.write(f"→ {obj.object_property} ({obj.confidence * 100:.1f}%)")
 
-def show_people(image_filename, detected_people):
-    print ("\nAnnotating objects...")
-
-    # Prepare image for drawing
-    image = Image.open(image_filename)
-    fig = plt.figure(figsize=(image.width/100, image.height/100))
-    plt.axis('off')
-    draw = ImageDraw.Draw(image)
-    color = 'cyan'
-
-    for detected_person in detected_people:
-        if detected_person.confidence > 0.2:
-            # Draw object bounding box
-            r = detected_person.bounding_box
-            bounding_box = ((r.x, r.y), (r.x + r.width, r.y + r.height))
-            draw.rectangle(bounding_box, outline=color, width=3)
-
-    # Save annotated image
-    plt.imshow(image)
-    plt.tight_layout(pad=0)
-    peoplefile = 'people.jpg'
-    fig.savefig(peoplefile)
-    print('  Results saved in', peoplefile)
-
-
-if __name__ == "__main__":
-    main()
+        st.image(image, caption="Imagen con objetos", use_column_width=True)
+    else:
+        st.warning("No se detectaron objetos.")
