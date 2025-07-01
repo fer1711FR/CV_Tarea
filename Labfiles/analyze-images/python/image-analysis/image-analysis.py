@@ -15,6 +15,7 @@ load_dotenv()
 AI_ENDPOINT = os.getenv("AI_SERVICE_ENDPOINT")
 AI_KEY = os.getenv("AI_SERVICE_KEY")
 
+
 # Crear cliente
 credentials = CognitiveServicesCredentials(AI_KEY)
 cv_client = ComputerVisionClient(AI_ENDPOINT, credentials)
